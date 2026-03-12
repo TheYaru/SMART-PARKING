@@ -1,0 +1,5 @@
+{
+  "name": "Ventura Plaza Smart Parking",
+  "description": "Prototipo de sistema de parqueadero inteligente con simulación de sensores IoT para el centro comercial Ventura Plaza.",
+  "requestFramePermissions": []
+}

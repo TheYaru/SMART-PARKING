@@ -1,167 +1,279 @@
-import { useState, useEffect } from 'react';
-import { Car, Info, RefreshCw, MapPin, CheckCircle2, XCircle } from 'lucide-react';
+import { useState, useEffect, ReactNode } from 'react';
+import { 
+  Car, Info, RefreshCw, MapPin, CheckCircle2, XCircle, 
+  LayoutDashboard, Smartphone, CreditCard, TrendingUp, 
+  DollarSign, Users, ShieldCheck, Camera
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, 
+  Tooltip, ResponsiveContainer, BarChart, Bar 
+} from 'recharts';
 
 interface ParkingSpace {
   id: number;
   occupied: boolean;
+  plate?: string;
 }
 
 interface ParkingStatus {
   freeSpaces: number;
   totalSpaces: number;
   spaces: ParkingSpace[];
+  totalRevenue: number;
+  history: { hour: string; occupancy: number }[];
   timestamp: string;
 }
 
 export default function App() {
+  const [view, setView] = useState<'user' | 'admin'>('admin');
   const [status, setStatus] = useState<ParkingStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [paying, setPaying] = useState<number | null>(null);
 
   const fetchStatus = async () => {
     try {
       const response = await fetch('/api/status');
-      if (!response.ok) throw new Error('Error al conectar con los sensores');
       const data = await response.json();
       setStatus(data);
-      setError(null);
     } catch (err) {
-      setError('Fallo en la comunicación con el sistema IoT');
-      console.error(err);
+      console.error('Error fetching status:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  const handlePay = async (spaceId: number) => {
+    setPaying(spaceId);
+    try {
+      const response = await fetch('/api/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spaceId }),
+      });
+      if (response.ok) {
+        await fetchStatus();
+        alert('¡Pago procesado! Ventura Plaza le desea un feliz viaje.');
+      }
+    } catch (err) {
+      console.error('Payment error:', err);
+    } finally {
+      setPaying(null);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000); // Refrescar cada 5 segundos
+    const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#151619] text-white font-mono p-4 md:p-8 flex flex-col items-center">
-      {/* Header / Brand */}
-      <header className="w-full max-w-4xl mb-8 flex flex-col md:flex-row justify-between items-center border-b border-white/10 pb-6">
-        <div className="flex items-center gap-4 mb-4 md:mb-0">
-          <div className="bg-[#F27D26] p-3 rounded-lg shadow-[0_0_15px_rgba(242,125,38,0.3)]">
-            <Car size={32} className="text-black" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tighter uppercase">Ventura Plaza</h1>
-            <p className="text-xs text-[#8E9299] tracking-widest uppercase">Smart Parking System v1.0</p>
-          </div>
+    <div className="min-h-screen bg-[#0A0A0B] text-white font-sans selection:bg-[#F27D26]/30">
+      {/* Navigation Rail */}
+      <nav className="fixed left-0 top-0 h-full w-16 bg-[#121214] border-r border-white/5 flex flex-col items-center py-8 gap-8 z-50">
+        <div className="bg-[#F27D26] p-2 rounded-xl mb-4">
+          <Car size={24} className="text-black" />
         </div>
-        
-        <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full border border-white/10">
-          <MapPin size={16} className="text-[#F27D26]" />
-          <span className="text-xs font-medium uppercase tracking-wider">Cúcuta, Colombia</span>
+        <button 
+          onClick={() => setView('admin')}
+          className={`p-3 rounded-xl transition-all ${view === 'admin' ? 'bg-white/10 text-[#F27D26]' : 'text-white/40 hover:text-white'}`}
+          title="Admin Dashboard"
+        >
+          <LayoutDashboard size={20} />
+        </button>
+        <button 
+          onClick={() => setView('user')}
+          className={`p-3 rounded-xl transition-all ${view === 'user' ? 'bg-white/10 text-[#F27D26]' : 'text-white/40 hover:text-white'}`}
+          title="User Mobile App"
+        >
+          <Smartphone size={20} />
+        </button>
+      </nav>
+
+      <div className="pl-16">
+        {view === 'admin' ? (
+          <AdminDashboard status={status} loading={loading} />
+        ) : (
+          <UserApp status={status} onPay={handlePay} paying={paying} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminDashboard({ status, loading }: { status: ParkingStatus | null, loading: boolean }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="p-8 max-w-7xl mx-auto"
+    >
+      <header className="mb-12 flex justify-between items-end">
+        <div>
+          <h1 className="text-4xl font-bold tracking-tight mb-2">Ventura Control <span className="text-[#F27D26]">Pro</span></h1>
+          <p className="text-white/40 uppercase text-[10px] tracking-[0.3em]">Gestión de Infraestructura SI • Cúcuta</p>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-white/40 mb-1">Última Sincronización</div>
+          <div className="font-mono text-sm flex items-center gap-2">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            {status ? new Date(status.timestamp).toLocaleTimeString() : '--:--:--'}
+          </div>
         </div>
       </header>
 
-      <main className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column: Summary Card */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-[#1C1D21] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
-            {/* Decorative radial track */}
-            <div className="absolute -top-10 -right-10 w-32 h-32 border border-dashed border-white/5 rounded-full" />
-            
-            <h2 className="text-[#8E9299] text-[10px] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-              <Info size={12} /> Disponibilidad Actual
-            </h2>
-            
-            <div className="flex items-baseline gap-2 mb-2">
-              <span className="text-7xl font-bold text-[#00FF00] tabular-nums leading-none">
-                {status?.freeSpaces ?? '--'}
-              </span>
-              <span className="text-[#8E9299] text-xl">/ {status?.totalSpaces ?? '10'}</span>
-            </div>
-            <p className="text-sm text-[#8E9299] mb-6">Espacios Libres</p>
-            
-            <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden mb-8">
-              <motion.div 
-                className="h-full bg-[#00FF00]"
-                initial={{ width: 0 }}
-                animate={{ width: status ? `${(status.freeSpaces / status.totalSpaces) * 100}%` : 0 }}
-                transition={{ type: 'spring', stiffness: 50 }}
-              />
-            </div>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        <StatCard icon={<Users className="text-blue-400" />} label="Ocupación" value={`${((status?.spaces.filter(s => s.occupied).length || 0) / 10 * 100).toFixed(0)}%`} sub="Tiempo Real" />
+        <StatCard icon={<CheckCircle2 className="text-green-400" />} label="Libres" value={status?.freeSpaces || 0} sub="Espacios" />
+        <StatCard icon={<DollarSign className="text-yellow-400" />} label="Ingresos" value={`$${(status?.totalRevenue || 0).toLocaleString()}`} sub="Hoy (COP)" />
+        <StatCard icon={<ShieldCheck className="text-purple-400" />} label="Seguridad" value="Activa" sub="IA Validando" />
+      </div>
 
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-[#8E9299]">
-              <div className="flex items-center gap-2">
-                <RefreshCw size={10} className={loading ? 'animate-spin' : ''} />
-                <span>Auto-Refresh: 5s</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Chart Section */}
+        <div className="lg:col-span-2 bg-[#121214] border border-white/5 rounded-3xl p-8">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-lg font-medium flex items-center gap-2">
+              <TrendingUp size={18} className="text-[#F27D26]" /> Tendencia de Ocupación
+            </h3>
+            <div className="text-[10px] text-white/40 uppercase tracking-widest">Simulación de Flujo Ventura</div>
+          </div>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={status?.history || []}>
+                <defs>
+                  <linearGradient id="colorOcc" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#F27D26" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#F27D26" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                <XAxis dataKey="hour" stroke="#ffffff20" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="#ffffff20" fontSize={10} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#121214', border: '1px solid #ffffff10', borderRadius: '12px' }}
+                  itemStyle={{ color: '#F27D26' }}
+                />
+                <Area type="monotone" dataKey="occupancy" stroke="#F27D26" fillOpacity={1} fill="url(#colorOcc)" strokeWidth={3} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Live Feed Mock */}
+        <div className="bg-[#121214] border border-white/5 rounded-3xl p-8">
+          <h3 className="text-lg font-medium mb-6 flex items-center gap-2">
+            <Camera size={18} className="text-blue-400" /> Validación IA
+          </h3>
+          <div className="space-y-4">
+            {status?.spaces.filter(s => s.occupied).slice(0, 4).map(space => (
+              <div key={space.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400 font-bold text-xs">
+                    {space.plate?.split('-')[0]}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold">{space.plate}</div>
+                    <div className="text-[9px] text-white/40 uppercase">Espacio P-{space.id}</div>
+                  </div>
+                </div>
+                <div className="text-[8px] px-2 py-1 bg-green-500/10 text-green-400 rounded-full border border-green-500/20 uppercase font-bold">
+                  Match 98%
+                </div>
               </div>
-              <span>{status ? new Date(status.timestamp).toLocaleTimeString() : '--:--:--'}</span>
-            </div>
-          </div>
-
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-4 rounded-xl text-xs flex items-center gap-3">
-              <XCircle size={16} />
-              {error}
-            </div>
-          )}
-        </div>
-
-        {/* Right Column: Parking Grid */}
-        <div className="lg:col-span-2">
-          <div className="bg-[#1C1D21] border border-white/10 rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-[#8E9299] text-[10px] uppercase tracking-[0.2em] mb-6">Mapa de Sensores IoT</h2>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-              <AnimatePresence mode="popLayout">
-                {status?.spaces.map((space) => (
-                  <motion.div
-                    key={space.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className={`
-                      relative flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-500
-                      ${space.occupied 
-                        ? 'bg-red-500/5 border-red-500/20 text-red-500 shadow-[inset_0_0_15px_rgba(239,68,68,0.05)]' 
-                        : 'bg-green-500/5 border-green-500/20 text-green-500 shadow-[inset_0_0_15px_rgba(34,197,94,0.05)]'}
-                    `}
-                  >
-                    <div className="text-[10px] uppercase tracking-widest mb-2 opacity-50">P-{space.id.toString().padStart(2, '0')}</div>
-                    {space.occupied ? <XCircle size={24} /> : <CheckCircle2 size={24} />}
-                    <div className="mt-2 text-[8px] uppercase font-bold tracking-tighter">
-                      {space.occupied ? 'Ocupado' : 'Libre'}
-                    </div>
-                    
-                    {/* Status Glow Indicator */}
-                    <div className={`
-                      absolute top-2 right-2 w-1.5 h-1.5 rounded-full 
-                      ${space.occupied ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]'}
-                    `} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              
-              {!status && Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="h-24 bg-white/5 rounded-xl animate-pulse border border-white/5" />
-              ))}
-            </div>
-          </div>
-          
-          <div className="mt-6 flex items-center gap-6 text-[10px] uppercase tracking-widest text-[#8E9299] px-2">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span>Disponible</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-red-500" />
-              <span>Ocupado</span>
-            </div>
+            ))}
+            {status?.spaces.filter(s => s.occupied).length === 0 && (
+              <div className="text-center py-12 text-white/20 text-xs italic">Esperando detecciones...</div>
+            )}
           </div>
         </div>
-      </main>
+      </div>
+    </motion.div>
+  );
+}
 
-      <footer className="mt-auto pt-12 text-[#4A4D54] text-[9px] uppercase tracking-[0.3em]">
-        Ventura Plaza Cúcuta • Smart Infrastructure Division
-      </footer>
+function UserApp({ status, onPay, paying }: { status: ParkingStatus | null, onPay: (id: number) => void, paying: number | null }) {
+  return (
+    <div className="flex justify-center items-center min-h-screen p-4">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="w-full max-w-[380px] bg-[#121214] rounded-[3rem] border-[8px] border-[#1C1D21] shadow-2xl overflow-hidden aspect-[9/19] flex flex-col"
+      >
+        {/* Mobile Header */}
+        <div className="p-8 pb-4">
+          <div className="flex justify-between items-center mb-8">
+            <div className="text-xs font-bold tracking-tighter">9:41</div>
+            <div className="flex gap-1">
+              <div className="w-4 h-2 bg-white/20 rounded-sm" />
+              <div className="w-4 h-2 bg-white/20 rounded-sm" />
+              <div className="w-4 h-2 bg-white rounded-sm" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold mb-1">Hola, Conductor</h2>
+          <p className="text-white/40 text-xs">Encuentra tu lugar en Ventura Plaza</p>
+        </div>
+
+        {/* Availability Card */}
+        <div className="px-6 mb-6">
+          <div className="bg-[#F27D26] rounded-3xl p-6 text-black shadow-lg shadow-[#F27D26]/20">
+            <div className="text-[10px] uppercase font-bold tracking-widest mb-1 opacity-70">Disponibilidad</div>
+            <div className="text-4xl font-black mb-2">{status?.freeSpaces} <span className="text-sm font-bold opacity-70">Libres</span></div>
+            <div className="text-[10px] font-medium">¡Ahorra tiempo y combustible hoy!</div>
+          </div>
+        </div>
+
+        {/* Spaces List */}
+        <div className="flex-1 overflow-y-auto px-6 space-y-3 pb-8 custom-scrollbar">
+          <div className="text-[10px] uppercase font-bold tracking-widest text-white/40 mb-2">Selecciona para pagar</div>
+          {status?.spaces.map(space => (
+            <div 
+              key={space.id}
+              className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${
+                space.occupied 
+                ? 'bg-white/5 border-white/10' 
+                : 'bg-green-500/5 border-green-500/20'
+              }`}
+            >
+              <div className="flex items-center gap-4">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${space.occupied ? 'bg-white/10' : 'bg-green-500/20 text-green-400'}`}>
+                  <Car size={20} />
+                </div>
+                <div>
+                  <div className="text-sm font-bold">Espacio P-{space.id}</div>
+                  <div className="text-[10px] text-white/40 uppercase">{space.occupied ? `Placa: ${space.plate}` : 'Disponible'}</div>
+                </div>
+              </div>
+              {space.occupied && (
+                <button 
+                  onClick={() => onPay(space.id)}
+                  disabled={paying === space.id}
+                  className="bg-white text-black p-2 rounded-xl hover:bg-[#F27D26] transition-colors disabled:opacity-50"
+                >
+                  {paying === space.id ? <RefreshCw size={16} className="animate-spin" /> : <CreditCard size={16} />}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value, sub }: { icon: ReactNode, label: string, value: string | number, sub: string }) {
+  return (
+    <div className="bg-[#121214] border border-white/5 rounded-3xl p-6 hover:border-[#F27D26]/30 transition-all group">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="p-2 bg-white/5 rounded-lg group-hover:scale-110 transition-transform">
+          {icon}
+        </div>
+        <span className="text-[10px] uppercase tracking-widest text-white/40">{label}</span>
+      </div>
+      <div className="text-3xl font-bold mb-1">{value}</div>
+      <div className="text-[10px] text-white/20 uppercase tracking-tighter">{sub}</div>
     </div>
   );
 }

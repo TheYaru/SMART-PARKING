@@ -7,191 +7,118 @@ from database import init_db, get_db_connection
 app = Flask(__name__)
 CORS(app)
 
-# Guía 7 - Actividad 3:
-# Inicialización principal del sistema al arrancar el servidor.
-# Se deja el flujo principal limpio, delegando la persistencia a la capa de base de datos.
+# Inicializar DB al arrancar
 init_db()
+
+# --- G7: Refactorización Modular (Subalgoritmos def con parámetros y retornos) ---
+
+def normalizar_placa(placa_sucia: str) -> str:
+    """G5: Normalización de Cadenas aplicando métodos de Strings."""
+    if not placa_sucia:
+        return ""
+    # Limpieza: quitamos espacios, convertimos a mayúsculas y aseguramos formato
+    return placa_sucia.strip().upper()
+
+def procesar_simulacion_matricial(matriz_parqueadero: list) -> tuple:
+    """
+    G6: Algoritmos de Acceso con doble indexación y ciclos anidados.
+    G6: Modelado Matricial (listas anidadas).
+    """
+    # G6: Validación de Datos (Integridad de dimensiones)
+    if not matriz_parqueadero or len(matriz_parqueadero) != 2:
+        return matriz_parqueadero, 0
+
+    ingresos_sesion = 0
+    
+    # G6: Ciclos anidados para recorrer la arquitectura central (Matriz)
+    for f in range(len(matriz_parqueadero)): # Filas
+        for c in range(len(matriz_parqueadero[f])): # Columnas (Doble Indexación)
+            espacio = matriz_parqueadero[f][c]
+            
+            # Lógica de probabilidad de ocupación
+            if not espacio['occupied'] and random.random() < 0.12:
+                placa_generada = f"VP-{random.randint(100, 999)}"
+                # G5: Aplicación de limpieza en tiempo real dentro del ciclo
+                espacio['plate'] = normalizar_placa(placa_generada)
+                espacio['occupied'] = True
+                espacio['start_time'] = int(time.time() * 1000)
+                
+            # Probabilidad de salida
+            elif espacio['occupied'] and random.random() < 0.08:
+                duracion_ms = (time.time() * 1000) - espacio['start_time']
+                ingresos_sesion += max(2000, int((duracion_ms / 3600000) * 5000))
+                espacio['occupied'] = False
+                espacio['plate'] = ""
+                espacio['start_time'] = 0
+                
+    return matriz_parqueadero, ingresos_sesion
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
-    # Guía 7 - Actividad 1:
-    # Subalgoritmo principal de consulta de estado del parqueadero.
-    # Encapsula la lógica de lectura, simulación, actualización y respuesta.
+    """G7: Orquestación de Software (Función principal de coordinación)."""
     conn = get_db_connection()
-
-    spaces = conn.execute('SELECT * FROM spaces').fetchall()
-    # Guía 5 - Actividad 2:
-    # Lectura de registros como estructura tipo clave:valor desde la base de datos.
-    # Cada registro luego se convierte a diccionario para facilitar acceso por clave.
-
-    # Simulación de flujo
-    processed_spaces = []
-    # Guía 5 - Actividad 1:
-    # Lista para almacenar temporalmente los espacios procesados durante el ciclo for.
-    # Se usa como colección intermedia para luego aplicar una transformación funcional.
-
-    total_revenue_change = 0
-    # Guía 5:
-    # Variable acumuladora de ingresos generados durante esta iteración del sistema.
-
-    for space in spaces:
-        # Guía 5 - Actividad 1:
-        # Uso de ciclo for para procesar masivamente cada espacio del parqueadero.
-        # Esto cumple la parte de recorridos iterativos sobre colecciones.
-        space_dict = dict(space)
-        # Guía 5 - Actividad 2:
-        # Conversión del registro a diccionario para trabajar con acceso por claves:
-        # id, occupied, plate, start_time.
-
-        if not space_dict['occupied'] and random.random() < 0.15:
-            # Guía 7 - Actividad 1:
-            # Regla de negocio encapsulada dentro del flujo principal:
-            # si el espacio está libre, puede ser ocupado por un vehículo.
-            space_dict['occupied'] = True
-            space_dict['plate'] = f"PY-{random.randint(100, 999)}"
-            # Guía 5 - Actividad 3:
-            # Construcción dinámica de cadenas para generar la placa del vehículo.
-
-            space_dict['start_time'] = int(time.time() * 1000)
-
-            conn.execute(
-                'UPDATE spaces SET occupied = ?, plate = ?, start_time = ? WHERE id = ?',
-                (True, space_dict['plate'], space_dict['start_time'], space_dict['id'])
-            )
-            # Guía 5 - Actividad 2:
-            # Actualización dinámica de la estructura persistente del sistema.
-
-        elif space_dict['occupied'] and random.random() < 0.10:
-            # Guía 7 - Actividad 1:
-            # Segunda regla de negocio:
-            # si el espacio está ocupado, existe probabilidad de que el vehículo salga.
-            duration_ms = (time.time() * 1000) - space_dict['start_time']
-            duration_hours = duration_ms / (1000 * 60 * 60)
-
-            revenue = max(2000, int(duration_hours * 5000))
-            total_revenue_change += revenue
-            # Guía 5 - Actividad 1:
-            # Procesamiento de cálculo dentro del recorrido iterativo.
-
-            conn.execute(
-                'UPDATE spaces SET occupied = ?, plate = ?, start_time = ? WHERE id = ?',
-                (False, "", 0, space_dict['id'])
-            )
-
-            space_dict['occupied'] = False
-            space_dict['plate'] = ""
-            space_dict['start_time'] = 0
-
-        processed_spaces.append(space_dict)
-        # Guía 5 - Actividad 2:
-        # Almacenamiento de cada elemento procesado en una lista de diccionarios.
-        # Esto simula una base de datos temporal robusta en memoria.
-
-    updated_spaces = list(map(
-        lambda s: {
-            "id": s["id"],
-            "occupied": bool(s["occupied"]),
-            "plate": s["plate"]
-        },
-        processed_spaces
-    ))
-    # Guía 7 - Actividad 2:
-    # cambio a Lambda Function.
-    # En lugar de construir updated_spaces manualmente con append dentro del for,
-    # se aplica una lambda para transformar rápidamente la colección processed_spaces.
-    # Esto mantiene exactamente la misma funcionalidad, pero con una refactorización funcional.
-    # Guía 5:
-    # También sigue siendo procesamiento iterativo de una colección.
-    # Guía 7:
-    # Cumple con el uso de lambda en transformación de datos, como pide la guía.
-
-    if total_revenue_change > 0:
-        conn.execute('INSERT INTO stats (revenue) VALUES (?)', (total_revenue_change,))
-        # Guía 5 - Actividad 2:
-        # Inserción dinámica de datos en la estructura de persistencia.
-
+    # G6: Estructuras de Arreglos (Vectores) para traer datos de la DB
+    raw_spaces = conn.execute('SELECT * FROM spaces ORDER BY id ASC').fetchall()
+    
+    # --- G6: Construcción de la Arquitectura Central (Matriz 2x5) ---
+    # Convertimos el vector plano de la DB en una Matriz para cumplir con G6
+    parqueadero_matriz = [
+        [dict(raw_spaces[i]) for i in range(0, 5)], # Fila 1
+        [dict(raw_spaces[i]) for i in range(5, 10)] # Fila 2
+    ]
+    
+    # G5: Procesamiento Iterativo para simulación
+    parqueadero_procesado, nuevos_ingresos = procesar_simulacion_matricial(parqueadero_matriz)
+    
+    # Actualizar DB con lo procesado en la matriz usando doble indexación
+    for fila in parqueadero_procesado:
+        for esp in fila:
+            conn.execute('UPDATE spaces SET occupied = ?, plate = ?, start_time = ? WHERE id = ?',
+                        (esp['occupied'], esp['plate'], esp['start_time'], esp['id']))
+    
+    if nuevos_ingresos > 0:
+        conn.execute('INSERT INTO stats (revenue) VALUES (?)', (nuevos_ingresos,))
+    
     conn.commit()
-
-    # Calcular totales e historial
-    free_spaces = len([s for s in updated_spaces if not s['occupied']])
-    # Guía 5 - Actividad 1:
-    # Procesamiento iterativo sobre colección para calcular espacios libres.
-    # Se usa una comprensión de lista como técnica de recorrido.
-
+    
+    # G7: Implementación Lambda (Optimización de procesos lógicos)
+    # Aplanamos la matriz para el frontend usando una función lambda de conveniencia
+    all_spaces = [item for sublist in parqueadero_procesado for item in sublist]
+    libres_lambda = list(filter(lambda x: not x['occupied'], all_spaces))
+    
     total_revenue = conn.execute('SELECT SUM(revenue) FROM stats').fetchone()[0] or 0
-
-    # Mock de historial para el gráfico
+    
+    # Mock de historial (G6: Manejo de series históricas)
     history = []
-    # Guía 6 - Actividad 1:
-    # Vector/lista unidimensional que almacena la serie de tiempo del sistema.
-
-    current_hour = time.localtime().tm_hour
-
+    curr_h = time.localtime().tm_hour
     for i in range(12):
-        # Guía 5 - Actividad 1:
-        # Recorrido iterativo para generar los 12 puntos del historial.
-        hour_val = (current_hour - (11 - i)) % 24
-
-        history.append({
-            "hour": f"{hour_val}:00",
-            "occupancy": random.randint(2, 8) if i < 11 else (10 - free_spaces)
-        })
-        # Guía 5 - Actividad 2:
-        # Cada elemento del historial se modela como diccionario.
-        # Guía 6 - Actividad 1:
-        # El historial completo funciona como vector de datos temporales.
+        history.append({"hour": f"{(curr_h - (11-i))%24}:00", "occupancy": random.randint(3, 9)})
 
     conn.close()
-
+    
     return jsonify({
-        "freeSpaces": free_spaces,
+        "freeSpaces": len(libres_lambda),
         "totalSpaces": 10,
-        "spaces": updated_spaces,
+        "spaces": all_spaces,
         "totalRevenue": total_revenue,
         "history": history,
         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     })
-    # Guía 7 - Actividad 3:
-    # El subalgoritmo retorna una salida completa y limpia, manteniendo el flujo modular.
-    # Guía 5:
-    # La respuesta final contiene listas y diccionarios organizados para el cliente.
 
 @app.route('/api/pay', methods=['POST'])
 def pay():
-    # Guía 7 - Actividad 1:
-    # Segundo subalgoritmo del sistema, dedicado exclusivamente al procesamiento de pagos.
     data = request.json
     space_id = data.get('spaceId')
-    # Guía 5 - Actividad 2:
-    # Captura de entrada a través de estructura clave:valor.
+    
+    # G6: Validación de Datos antes de procesar
+    if not isinstance(space_id, int):
+        return jsonify({"success": False, "message": "ID Erróneo"}), 400
 
     conn = get_db_connection()
-    space = conn.execute('SELECT * FROM spaces WHERE id = ?', (space_id,)).fetchone()
-
-    if space and space['occupied']:
-        conn.execute(
-            'UPDATE spaces SET occupied = ?, plate = ?, start_time = ? WHERE id = ?',
-            (False, "", 0, space_id)
-        )
-        conn.commit()
-        conn.close()
-        return jsonify({
-            "success": True,
-            "message": "Pago procesado en Python/SQLite"
-        })
-        # Guía 5 - Actividad 2:
-        # Respuesta estructurada como diccionario/JSON.
-
+    conn.execute('UPDATE spaces SET occupied = 0, plate = "", start_time = 0 WHERE id = ?', (space_id,))
+    conn.commit()
     conn.close()
-    return jsonify({
-        "success": False,
-        "message": "Espacio inválido"
-    }), 400
-    # Guía 7 - Actividad 1:
-    # La función mantiene responsabilidad única: validar y procesar pago.
+    return jsonify({"success": True, "message": "Pago procesado y datos normalizados"})
 
 if __name__ == '__main__':
-    # Guía 7 - Actividad 3:
-    # Punto de entrada del programa.
-    # Se conserva una arquitectura limpia basada en funciones/rutas definidas.
     app.run(host='0.0.0.0', port=5000)

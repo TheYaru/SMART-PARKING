@@ -34,10 +34,20 @@ export default function App() {
   const fetchStatus = async () => {
     try {
       const response = await fetch('/api/status');
+      if (!response.ok) {
+        // Intentamos leer como JSON para ver si es nuestro error de proxy 503
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errData = await response.json();
+          throw new Error(errData.error || `Error HTTP ${response.status}`);
+        }
+        throw new Error(`Servidor ocupado (${response.status})`);
+      }
       const data = await response.json();
       setStatus(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching status:', err);
+      // Opcionalmente podrías poner un estado de error en la UI aquí
     } finally {
       setLoading(false);
     }
@@ -51,11 +61,19 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spaceId }),
       });
-      if (response.ok) {
-        await fetchStatus();
-        alert('¡Pago procesado! Ventura Plaza le desea un feliz viaje.');
+      
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type");
+        const msg = (contentType && contentType.includes("application/json")) 
+          ? (await response.json()).details || "Fallo en el pago"
+          : "Error de conexión";
+        throw new Error(msg);
       }
-    } catch (err) {
+
+      await fetchStatus();
+      alert('¡Pago procesado! Ventura Plaza le desea un feliz viaje.');
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
       console.error('Payment error:', err);
     } finally {
       setPaying(null);

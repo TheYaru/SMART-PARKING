@@ -11,42 +11,44 @@ async function startServer() {
   // --- Integración con Python Backend ---
   console.log("Iniciando integración con Python...");
   
-  // 1. Intentar instalar dependencias de Python
-  const pip = spawn("python3", ["-m", "pip", "install", "-r", "backend/requirements.txt"]);
-  
-  pip.on("error", (err) => {
-    console.error("Error al intentar ejecutar pip:", err.message);
-    // Si falla pip, intentamos iniciar el proceso de python directamente
-    startPythonBackend();
-  });
-
-  pip.stdout.on("data", (data) => console.log(`[PIP]: ${data}`));
-  
-  pip.on("close", (code) => {
-    console.log(`Instalación de dependencias Python finalizada (code ${code})`);
-    startPythonBackend();
-  });
-
-  function startPythonBackend() {
-    console.log("Iniciando el servidor Flask...");
+  const startPythonBackend = () => {
+    console.log("Lanzando proceso Python (backend/app.py)...");
     const pythonProcess = spawn("python3", ["backend/app.py"]);
     
     pythonProcess.on("error", (err) => {
-      console.error("Error crítico: No se pudo iniciar Python 3.", err.message);
+      console.error("No se pudo iniciar python3, intentando con python...", err.message);
+      const fallbackProcess = spawn("python", ["backend/app.py"]);
+      fallbackProcess.on("error", (e) => console.error("Error crítico: Python no encontrado.", e.message));
     });
 
-    pythonProcess.stdout.on("data", (data) => {
-      console.log(`[Python]: ${data}`);
-    });
-    
-    pythonProcess.stderr.on("data", (data) => {
-      console.error(`[Python Error]: ${data}`);
-    });
-  }
+    pythonProcess.stdout.on("data", (data) => console.log(`[Python]: ${data}`));
+    pythonProcess.stderr.on("data", (data) => console.error(`[Python Error]: ${data}`));
+  };
+
+  // Intentamos instalar dependencias en segundo plano pero lanzamos el server lo antes posible
+  // La mayoría de entornos ya tienen flask instalado.
+  const pip = spawn("python3", ["-m", "pip", "install", "flask", "flask-cors"]);
+  pip.on("close", () => {
+    console.log("Verificación de dependencias Python completada.");
+    startPythonBackend();
+  });
+  pip.on("error", () => {
+    console.warn("Pip no disponible, intentando iniciar server directamente...");
+    startPythonBackend();
+  });
 
   // 3. Proxy de API hacia Python (Puerto 5000)
+  // Añadimos manejo de errores para evitar que las peticiones /api caigan al SPA (HTML)
   app.use("/api", proxy("http://localhost:5000", {
-    proxyReqPathResolver: (req) => `/api${req.url}`
+    proxyReqPathResolver: (req) => `/api${req.url}`,
+    proxyErrorHandler: (err, res, next) => {
+      console.error("[Proxy Error]: No se pudo conectar con el backend Python (5000).", err.message);
+      res.status(503).json({ 
+        error: "Servidor de Sensores no disponible", 
+        details: "El backend Python aún está iniciando o falló.",
+        code: err.code 
+      });
+    }
   }));
 
   // --- Configuración de Vite / Estáticos ---
